@@ -24,28 +24,6 @@ for filename in os.listdir("known_faces"):
             known_encodings.append(encodings[0])
             known_names.append(os.path.splitext(filename)[0])
 
-# @app.route('/recognize', methods=['POST'])
-# def recognize_face():
-#     if 'image' not in request.files:
-#         return jsonify({'error': 'No image uploaded'}), 400
-
-#     img_stream = request.files['image'].read()
-#     image = Image.open(io.BytesIO(img_stream)).convert('RGB')
-#     image_np = np.array(image)
-
-#     unknown_encodings = face_recognition.face_encodings(image_np)
-
-#     if not unknown_encodings:
-#         return jsonify({'result': 'no face found'})
-
-#     for face_encoding in unknown_encodings:
-#         results = face_recognition.compare_faces(known_encodings, face_encoding, tolerance=0.5)
-#         if True in results:
-#             matched_name = known_names[results.index(True)]
-#             return jsonify({'result': 'authorized', 'name': matched_name})
-
-#     return jsonify({'result': 'unauthorized'})
-
 @app.route('/recognize', methods=['POST'])
 def recognize_face():
     data = request.get_json()
