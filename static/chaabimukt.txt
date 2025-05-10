@@ -1,0 +1,230 @@
+<!-- index.html (updated to work with your Python base64 API) -->
+
+<!-- ======================================================== -->
+ <!-- HTML CODE START-->
+<!-- ======================================================== -->
+ 
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Unlock with BLE</title>
+</head>
+
+<body>
+    <h2>Face Unlock System</h2>
+    <video id="video" autoplay playsinline width="320" height="240"></video><br>
+    <button onclick="captureAndVerify()" id="btnVerify">Verify Face</button>
+    
+    <script>
+        const video = document.getElementById("video");
+
+        // Start camera
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => video.srcObject = stream);
+            
+        async function captureAndVerify() {
+            document.getElementById("btnVerify").disabled = true;
+            document.getElementById("btnVerify").innerText = "Processing...";
+
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext("2d").drawImage(video, 0, 0);
+
+            const base64 = canvas.toDataURL("image/png");
+
+            const res = await fetch("http://192.168.164.6:5000/recognize", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image: base64 })
+            });
+
+            const result = await res.json();
+            console.log("Server:", result);
+
+            if (result.result === "authorized") {
+                alert("Welcome, " + result.name);
+                sendBLECommand("unlock");
+            } else if (result.result === "unauthorized") {
+                alert("Access Denied");
+                sendBLECommand("deny");
+            } else {
+                alert("No face found");
+                sendBLECommand("deny");
+            }
+        }
+        
+        async function sendBLECommand(message) {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: "ChaabimuktESP32" }],
+                    optionalServices: ["4fafc201-1fb5-459e-8fcc-c5c9c331914b"]
+                });
+
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+                const characteristic = await service.getCharacteristic("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+
+                const encoder = new TextEncoder();
+                await characteristic.writeValue(encoder.encode(message));
+                console.log("Sent BLE command:", message);
+            } catch (e) {
+                console.error("BLE Error:", e);
+            }
+        }
+    </script>
+</body>
+
+</html>
+<!-- ======================================================== -->
+<!-- HTML CODE END -->
+<!-- ======================================================== -->
+
+
+<!-- ======================================================== -->
+<!-- REACT JS(.tsx) CODE START-->
+<!-- ======================================================== -->
+ 
+import { useRef, useState } from "react";
+
+export default function App() {
+const videoRef = useRef<HTMLVideoElement | null>(null);
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+        const [loading, setLoading] = useState<boolean>(false);
+            const [authorized, setAuthorized] = useState<boolean | null>(null);
+                const [showBluetoothBtn, setShowBluetoothBtn] = useState<boolean>(false);
+
+                    const startCamera = async () => {
+                    try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    }
+                    } catch (err) {
+                    console.error("Camera access denied", err);
+                    }
+                    };
+
+                    const stopCamera = () => {
+                    const video = videoRef.current;
+                    if (video && video.srcObject) {
+                    const stream = video.srcObject as MediaStream;
+                    const tracks = stream.getTracks();
+                    tracks.forEach((track) => track.stop());
+                    video.srcObject = null;
+                    }
+                    };
+
+                    const captureImage = async () => {
+                    setLoading(true);
+                    setAuthorized(null);
+                    setShowBluetoothBtn(false);
+
+                    const video = videoRef.current;
+                    const canvas = canvasRef.current;
+
+                    if (!video || !canvas) return;
+
+                    const ctx = canvas.getContext("2d");
+                    if (!ctx) return;
+
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const dataUrl = canvas.toDataURL("image/jpeg");
+
+                    try {
+                    const res = await fetch("http://192.168.164.6:5000/recognize", {
+                    method: "POST",
+                    headers: {
+                    "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ image: dataUrl }),
+                    });
+
+                    const data = await res.json();
+                    setLoading(false);
+
+                    if (data.result === "authorized") {
+                    alert("Welcome, " + data.name);
+                    setAuthorized(true);
+                    setShowBluetoothBtn(true);
+                    } else if (data.result === "unauthorized") {
+                    alert("Access Denied");
+                    setAuthorized(false);
+                    } else if (data.result === "no face found") {
+                    alert("No face found in the image.");
+                    setAuthorized(false);
+                    }
+                    } catch (err) {
+                    setLoading(false);
+                    alert("Face recognition failed");
+                    console.error("Face recognition failed", err);
+                    }
+                    };
+
+                    const connectToBluetooth = async () => {
+                    try {
+                    const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: "ChaabimuktESP32" }],
+                    optionalServices: ["4fafc201-1fb5-459e-8fcc-c5c9c331914b"],
+                    });
+
+                    const server = await device.gatt?.connect();
+                    const service = await server.getPrimaryService(
+                    "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+                    );
+                    const characteristic = await service.getCharacteristic(
+                    "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+                    );
+                    const encoder = new TextEncoder();
+                    await characteristic.writeValue(encoder.encode("unlock"));
+                    alert("Door unlocked");
+                    setAuthorized(null);
+                    setShowBluetoothBtn(false);
+                    stopCamera();
+                    } catch (error) {
+                    console.error("Bluetooth connection failed", error);
+                    }
+                    };
+
+                    return (
+                    <div className="flex flex-col items-center p-4">
+                        <h1 className="text-2xl font-bold mb-4">Face Recognition Door Access</h1>
+                        <video ref={videoRef} autoPlay width={320} height={240} className="rounded border" />
+                        <canvas ref={canvasRef} width={320} height={240} style={{ display: "none" }} />
+
+                        <div className="mt-4 space-x-2">
+                            <button onClick={startCamera} className="bg-blue-500 text-white px-4 py-2 rounded">
+                                Start Camera
+                            </button>
+                            <button onClick={captureImage} className="bg-green-500 text-white px-4 py-2 rounded">
+                                Capture Image
+                            </button>
+                        </div>
+
+                        {loading && (
+                        <p className="mt-4 text-yellow-500">Recognizing face, please wait...</p>
+                        )}
+                        {authorized === false && (
+                        <p className="mt-4 text-red-500">Access Denied</p>
+                        )}
+                        {authorized === true && (
+                        <p className="mt-4 text-green-500">Access Granted</p>
+                        )}
+
+                        {showBluetoothBtn && (
+                        <button onClick={connectToBluetooth}
+                            className="mt-4 bg-purple-600 text-white px-4 py-2 rounded">
+                            Connect to Bluetooth
+                        </button>
+                        )}
+                    </div>
+                    );
+                    }
+
+
+<!-- ======================================================== -->
+<!-- REACT JS(.tsx) CODE END-->
+<!-- ======================================================== -->

@@ -1,0 +1,63 @@
+// void setup() {
+//   // put your setup code here, to run once:
+
+// }
+
+// void loop() {
+//   // put your main code here, to run repeatedly:
+
+// }
+
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+
+#define LED_PIN 2  // Onboard LED
+
+BLECharacteristic *pCharacteristic;
+
+class MyCallbacks: public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pCharacteristic) {
+    String value = pCharacteristic->getValue().c_str();  // Fix: Use Arduino String
+
+    Serial.print("Received: ");
+    Serial.println(value);
+
+    if (value == "unlock") {
+      digitalWrite(LED_PIN, HIGH);
+      delay(3000);                   // 3 second delay
+      digitalWrite(LED_PIN, LOW);
+    } else {
+      digitalWrite(LED_PIN, LOW);
+    }
+  }
+};
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);  // Start with LED OFF
+
+
+  BLEDevice::init("ChaabimuktESP32");
+  BLEServer *pServer = BLEDevice::createServer();
+  BLEService *pService = pServer->createService("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+
+  pCharacteristic = pService->createCharacteristic(
+                      "beb5483e-36e1-4688-b7f5-ea07361b26a8",
+                      BLECharacteristic::PROPERTY_WRITE
+                    );
+
+  pCharacteristic->setCallbacks(new MyCallbacks());
+  pService->start();
+
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->start();
+
+  Serial.println("BLE device ready. Waiting for messages...");
+}
+
+void loop() {
+  // Nothing to do here
+}
